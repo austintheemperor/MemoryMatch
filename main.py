@@ -1,21 +1,43 @@
 import pygame
 import random
+import tkinter as tk
+from tkinter import simpledialog, messagebox
 
 # --- config ---
-WIDTH, HEIGHT = 4, 4   # must be even total
+def get_board_size():
+    while True:
+        w = simpledialog.askinteger("Board Width", "Enter width:", minvalue=1)
+        h = simpledialog.askinteger("Board Height", "Enter height:", minvalue=1)
+
+        if w is None or h is None:
+            return None, None
+
+        if (w * h) % 2 == 0:
+            return w, h
+
+        messagebox.showerror("Invalid Board", "Width × Height must be even.")
+
+# REQUIRED for tkinter dialogs to work reliably
+root = tk.Tk()
+root.withdraw()
+
+WIDTH, HEIGHT = get_board_size()
+
+if WIDTH is None:
+    exit()
+
 TILE_SIZE = 100
 MARGIN = 10
 
 SCREEN_WIDTH = WIDTH * (TILE_SIZE + MARGIN) + MARGIN
 SCREEN_HEIGHT = HEIGHT * (TILE_SIZE + MARGIN) + MARGIN
 
-# --- setup ---
 pygame.init()
 screen = pygame.display.set_mode((SCREEN_WIDTH, SCREEN_HEIGHT))
 pygame.display.set_caption("Memory Game")
 font = pygame.font.SysFont(None, 48)
 
-# --- create board ---
+# --- board ---
 num_pairs = (WIDTH * HEIGHT) // 2
 values = list(range(1, num_pairs + 1)) * 2
 random.shuffle(values)
@@ -30,7 +52,9 @@ for r in range(HEIGHT):
     board.append(row)
 
 revealed = [[False]*WIDTH for _ in range(HEIGHT)]
+
 first_pick = None
+second_pick = None
 lock = False
 
 # --- draw ---
@@ -47,22 +71,20 @@ def draw():
             if revealed[r][c]:
                 pygame.draw.rect(screen, (200, 200, 200), rect)
                 text = font.render(str(board[r][c]), True, (0, 0, 0))
-                text_rect = text.get_rect(center=rect.center)
-                screen.blit(text, text_rect)
+                screen.blit(text, text.get_rect(center=rect.center))
             else:
                 pygame.draw.rect(screen, (70, 130, 180), rect)
 
     pygame.display.flip()
 
-# --- get tile from mouse ---
+# --- tile lookup ---
 def get_tile(pos):
     mx, my = pos
     for r in range(HEIGHT):
         for c in range(WIDTH):
             x = c * (TILE_SIZE + MARGIN) + MARGIN
             y = r * (TILE_SIZE + MARGIN) + MARGIN
-            rect = pygame.Rect(x, y, TILE_SIZE, TILE_SIZE)
-            if rect.collidepoint(mx, my):
+            if pygame.Rect(x, y, TILE_SIZE, TILE_SIZE).collidepoint(mx, my):
                 return r, c
     return None
 
@@ -79,37 +101,41 @@ while running:
 
         if event.type == pygame.MOUSEBUTTONDOWN and not lock:
             tile = get_tile(event.pos)
-            if tile:
-                r, c = tile
+            if not tile:
+                continue
 
-                if revealed[r][c]:
-                    continue
+            r, c = tile
 
-                revealed[r][c] = True
+            if revealed[r][c]:
+                continue
 
-                if first_pick is None:
-                    first_pick = (r, c)
+            revealed[r][c] = True
+
+            if first_pick is None:
+                first_pick = (r, c)
+            else:
+                r1, c1 = first_pick
+                r2, c2 = r, c
+
+                if board[r1][c1] != board[r2][c2]:
+                    second_pick = (r1, c1, r2, c2)
+                    lock = True
+                    pygame.time.set_timer(pygame.USEREVENT, 800)
                 else:
-                    r1, c1 = first_pick
-                    r2, c2 = r, c
+                    first_pick = None
 
-                    if board[r1][c1] != board[r2][c2]:
-                        lock = True
-                        pygame.time.set_timer(pygame.USEREVENT, 1000)
-                    else:
-                        first_pick = None
+        # FIXED TIMER HANDLING
+        if event.type == pygame.USEREVENT:
+            if second_pick:
+                r1, c1, r2, c2 = second_pick
 
-    # handle delay flip back
-    if event.type == pygame.USEREVENT:
-        r1, c1 = first_pick
-        r2, c2 = r, c
+                revealed[r1][c1] = False
+                revealed[r2][c2] = False
 
-        revealed[r1][c1] = False
-        revealed[r2][c2] = False
-
-        first_pick = None
-        lock = False
-        pygame.time.set_timer(pygame.USEREVENT, 0)
+            first_pick = None
+            second_pick = None
+            lock = False
+            pygame.time.set_timer(pygame.USEREVENT, 0)
 
     clock.tick(60)
 
